@@ -59,7 +59,7 @@ func Database(connRead, connWrite string) {
 		}))
 
 	// 开始构造表 首次启动需要
-	// Migration()
+	Migration()
 }
 
 func NewDBClient(ctx context.Context) *gorm.DB {
