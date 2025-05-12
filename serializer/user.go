@@ -18,12 +18,12 @@ type User struct {
 
 func BuildUser(user *model.User) *User {
 	return &User{
-		ID:       user.ID,
-		UserName: user.UserName,
-		NickName: user.NickName,
-		Email:    user.Email,
-		Status:   user.Status,
-		Avatar:   conf.Host + conf.HttpPort + conf.AvatarPath + user.Avatar,
-		CreateAt: user.Model.CreatedAt.Unix(),
+		ID:       (*user).ID,
+		UserName: (*user).UserName,
+		NickName: (*user).NickName,
+		Email:    (*user).Email,
+		Status:   (*user).Status,
+		Avatar:   conf.Host + conf.HttpPort + conf.AvatarPath + (*user).Avatar,
+		CreateAt: (*user).Model.CreatedAt.Unix(),
 	}
 }

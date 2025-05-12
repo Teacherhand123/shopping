@@ -27,8 +27,7 @@ func (dao *CarouselDao) GetCarouselById(id uint) (carousel *model.Carousel, err 
 }
 
 // ListCarousel 根据id获取Carousel
-func (dao *CarouselDao) ListCarousel() (carousel []model.Carousel, err error) {
-	carousel = make([]model.Carousel, 0)
-	err = dao.DB.Model(&model.Carousel{}).Find(&carousel).Error
+func (dao *CarouselDao) ListCarousel() (carousel []*model.Carousel, err error) {
+	err = dao.DB.Model(&model.Carousel{}).Find(carousel).Error
 	return carousel, err
 }

@@ -13,6 +13,7 @@ var MsgFlags = map[int]string{
 	ErrorUploadFail:            "上传失败",
 	ErrorSendEmail:             "邮件发送失败",
 	ErrorProductImgUpload:      "图片上传错误",
+	ErrorFavoriteExist:         "收藏夹错误",
 }
 
 func GetMsg(code int) string {

@@ -14,8 +14,8 @@ type Money struct {
 func BuildMoney(item *model.User, key string) Money {
 	utils.Encrypt.SetKey(key)
 	return Money{
-		UserId:    item.ID,
-		UserName:  item.UserName,
-		UserMoney: utils.Encrypt.AesDecoding(item.Money),
+		UserId:    (*item).ID,
+		UserName:  (*item).UserName,
+		UserMoney: utils.Encrypt.AesDecoding((*item).Money),
 	}
 }
