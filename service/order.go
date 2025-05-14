@@ -18,10 +18,10 @@ type OrderService struct {
 	Num       int     `json:"num" form:"num"`
 	AddressId uint    `json:"address_id" form:"address_id"`
 	Money     float64 `json:"money" form:"money"`
-	BossId    uint    `json:"BossId" form:"BossId"`
-	UserId    uint    `json:"UserId" form:"UserId"`
-	OrderNum  int     `json:"OrderNum" form:"OrderNum"`
-	Type      int     `json:"Type" form:"Type"`
+	BossId    uint    `json:"boss_id" form:"boss_id"`
+	UserId    uint    `json:"user_id" form:"user_id"`
+	OrderNum  int     `json:"order_num" form:"order_num"`
+	Type      uint    `json:"type" form:"type"`
 	model.BasePage
 }
 
@@ -77,7 +77,7 @@ func (service *OrderService) Create(ctx context.Context, uId uint) serializer.Re
 	}
 }
 
-// 展示userId和oId的订单
+// 展示userId和oId的单个订单
 func (service *OrderService) Show(ctx context.Context, uId, oId uint) serializer.Response {
 	var order *model.Order
 	code := e.Success
@@ -121,26 +121,32 @@ func (service *OrderService) Show(ctx context.Context, uId, oId uint) serializer
 	}
 }
 
-// 获取user_id下的所有订单
+// 获取user_id下的特定type的订单
 func (service *OrderService) Get(ctx context.Context, uId uint) serializer.Response {
 	var orders []*model.Order
 	code := e.Success
-	orderDao := dao.NewOrderDao(ctx)
+	if service.PageSize == 0 {
+		service.PageSize = 15
+	}
 
-	orders, err := orderDao.GetOrderesByUserId(uId)
+	orderDao := dao.NewOrderDao(ctx)
+	condition := make(map[string]interface{})
+
+	if service.Type != 0 { // Type = 0 即为返回全部订单
+		condition["type"] = service.Type
+	}
+	condition["user_id"] = uId
+	orders, err := orderDao.ListOrderByCondition(condition, service.BasePage)
 	if err != nil {
 		code = e.Error
 		return serializer.Response{
 			Status: code,
 			Msg:    e.GetMsg(code),
+			Error:  err.Error(),
 		}
 	}
 
-	return serializer.Response{
-		Status: code,
-		Msg:    e.GetMsg(code),
-		Data:   serializer.BuildOrders(ctx, orders),
-	}
+	return serializer.BuildListResponse(serializer.BuildOrders(ctx, orders), uint(len(orders)))
 }
 
 // 更新uId和cId的订单
@@ -151,7 +157,8 @@ func (service *OrderService) Update(ctx context.Context, uId, cId uint) serializ
 
 	// 只更新数量
 	order = &model.Order{
-		Num: uint(service.Num),
+		Num: service.Num,
+		// Type: service.Type,
 	}
 
 	err := orderDao.UpdateOrderById(cId, order)

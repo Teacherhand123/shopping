@@ -22,7 +22,7 @@ func CreateOrder(c *gin.Context) {
 	}
 }
 
-// 获取user_id下的所有订单
+// 获取user_id下的特定type的所有订单
 func GetOrders(c *gin.Context) {
 	showOrder := service.OrderService{}
 	claim, _ := utils.ParseToken(c.GetHeader("Authorization"))
@@ -35,18 +35,18 @@ func GetOrders(c *gin.Context) {
 	}
 }
 
-// 获取cId的订单
-// func ShowOrder(c *gin.Context) {
-// 	showOrder := service.OrderService{}
-// 	// _, _ := utils.ParseToken(c.GetHeader("Authorization"))
-// 	id, _ := strconv.Atoi(c.Param("id"))
-// 	if err := c.ShouldBind(&showOrder); err == nil {
-// 		res := showOrder.Show(c.Request.Context(), uint(id))
-// 		c.JSON(http.StatusOK, res)
-// 	} else {
-// 		c.JSON(http.StatusBadRequest, ErrorResponse(err))
-// 	}
-// }
+// 展示userId和oId的单个订单
+func ShowOrder(c *gin.Context) {
+	showOrder := service.OrderService{}
+	claim, _ := utils.ParseToken(c.GetHeader("Authorization"))
+	id, _ := strconv.Atoi(c.Param("id"))
+	if err := c.ShouldBind(&showOrder); err == nil {
+		res := showOrder.Show(c.Request.Context(), claim.ID, uint(id))
+		c.JSON(http.StatusOK, res)
+	} else {
+		c.JSON(http.StatusBadRequest, ErrorResponse(err))
+	}
+}
 
 // 通过uId更新订单
 func UpdateOrder(c *gin.Context) {

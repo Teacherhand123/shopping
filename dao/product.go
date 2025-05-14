@@ -79,3 +79,7 @@ func (dao *ProductDao) SearchProduct(info string, page model.BasePage) (products
 // 	err = dao.DB.Model(&model.Product{}).Where("id = ?", id).Error
 // 	return
 // }
+
+func (dao *ProductDao) UpdateProduct(id uint, product *model.Product) (err error) {
+	return dao.DB.Model(&model.Product{}).Where("id = ?", id).Updates(product).Error
+}

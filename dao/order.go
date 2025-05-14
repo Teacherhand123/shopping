@@ -37,6 +37,15 @@ func (dao *OrderDao) GetOrderesByUserId(uId uint) (order []*model.Order, err err
 	return order, err
 }
 
+func (dao *OrderDao) ListOrderByCondition(condition map[string]interface{}, page model.BasePage) (order []*model.Order, err error) {
+	err = dao.Model(&model.Order{}).
+		Where(condition).
+		Offset((page.PageNum - 1) * (page.PageSize)).
+		Limit(page.PageSize).
+		Find(&order).Error
+	return
+}
+
 // 当order的某些字段为空，是不算作要更新的字段的
 func (dao *OrderDao) UpdateOrderById(oId uint, order *model.Order) (err error) {
 	err = dao.DB.Where("id = ?", oId).Updates(order).Error
