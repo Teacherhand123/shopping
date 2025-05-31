@@ -9,6 +9,8 @@ import (
 	"shopping/pkg/utils"
 	"shopping/serializer"
 	"strconv"
+
+	"gorm.io/gorm"
 )
 
 type OrderPay struct {
@@ -27,9 +29,105 @@ type OrderPay struct {
 func (service *OrderPay) PayDown(ctx context.Context, uId uint) serializer.Response {
 	utils.Encrypt.SetKey(service.Key) // 这个key应该要和其他的key不一样
 	code := e.Success
-	orderDao := dao.NewOrderDao(ctx)
-	tx := orderDao.Begin()
-	order, err := orderDao.GetOrderByIdAnduId(service.OrderId, uId)
+
+	err := dao.NewOrderDao(ctx).Transaction(func(tx *gorm.DB) error {
+		order, err := dao.NewOrderDaoByDB(tx).GetOrderByIdAnduId(service.OrderId, uId)
+
+		if err != nil {
+			return err // 出错回滚
+		}
+
+		money := order.Money // 单价
+		num := order.Num
+		money = money * float64(num) // 总价
+
+		userDao := dao.NewUserDao(ctx)
+		user, err := userDao.GetUserById(uId)
+
+		if err != nil {
+			return err // 出错回滚
+		}
+
+		// 对钱进行解密，减去订单，再加密保存
+		moneyStr := utils.Encrypt.AesDecoding(user.Money)
+		moneyFloat, _ := strconv.ParseFloat(moneyStr, 64)
+		// fmt.Sprintf("买家金额:%f, 要减去金额:%f", moneyFloat, money)
+
+		if moneyFloat-money < 0.0 {
+			return err // 出错回滚
+		}
+
+		finMoney := fmt.Sprintf("%f", moneyFloat-money)
+		user.Money = utils.Encrypt.AesEncoding(finMoney)
+
+		userDao = dao.NewUserDaoByDB(userDao.DB)
+		err = userDao.UpdateUserById(uId, user) // 更新用户
+
+		if err != nil {
+			return err // 出错回滚
+		}
+
+		var boss *model.User
+		boss, err = userDao.GetUserById(service.BossId)
+		if err != nil {
+			return err // 出错回滚
+		}
+
+		// 对钱进行解密，加去订单，再加密保存
+		moneyStr = utils.Encrypt.AesDecoding(boss.Money)
+		moneyFloat, _ = strconv.ParseFloat(moneyStr, 64)
+		finMoney = fmt.Sprintf("%f", moneyFloat+money)
+		boss.Money = utils.Encrypt.AesEncoding(finMoney)
+
+		// userDao = dao.NewUserDaoByDB(userDao.DB)
+		err = userDao.UpdateUserById(boss.ID, boss) // 更新老板
+		if err != nil {
+			return err // 出错回滚
+		}
+
+		// 对应的商品数量 -1
+		var product *model.Product
+		productDao := dao.NewProductDao(ctx)
+		product, err = productDao.GetProductById(service.ProductId)
+		if err != nil {
+			return err // 出错回滚
+		}
+		product.Num -= num
+		err = productDao.UpdateProduct(service.ProductId, product)
+		if err != nil {
+			return err // 出错回滚
+		}
+
+		// 更新 订单type设置为2
+		upOrder := &model.Order{
+			Type: 2,
+		}
+		err = dao.NewOrderDaoByDB(tx).UpdateOrderById(service.OrderId, upOrder)
+		if err != nil {
+			return err // 出错回滚
+		}
+
+		productUser := &model.Product{
+			Name:          product.Name,
+			CategoryId:    product.CategoryId,
+			Title:         product.Title,
+			Info:          product.Info,
+			ImgPath:       product.ImgPath,
+			Price:         product.Price,
+			DiscountPrice: product.DiscountPrice,
+			OnSale:        false,
+			Num:           order.Num,
+			BossId:        uId,
+			BossName:      user.UserName,
+			BossAvatar:    user.Avatar,
+		}
+		err = productDao.CreateProduct(productUser)
+		if err != nil {
+			return err // 出错回滚
+		}
+
+		return nil // 正常提交事务
+	})
 
 	if err != nil {
 		code = e.Error
@@ -39,149 +137,10 @@ func (service *OrderPay) PayDown(ctx context.Context, uId uint) serializer.Respo
 			Error:  err.Error(),
 		}
 	}
-
-	money := order.Money // 单价
-	num := order.Num
-	money = money * float64(num) // 总价
-
-	userDao := dao.NewUserDao(ctx)
-	user, err := userDao.GetUserById(uId)
-
-	if err != nil {
-		code = e.Error
-		return serializer.Response{
-			Status: code,
-			Msg:    e.GetMsg(code),
-			Error:  err.Error(),
-		}
-	}
-
-	// 对钱进行解密，减去订单，再加密保存
-	moneyStr := utils.Encrypt.AesDecoding(user.Money)
-	moneyFloat, _ := strconv.ParseFloat(moneyStr, 64)
-	// fmt.Sprintf("买家金额:%f, 要减去金额:%f", moneyFloat, money)
-
-	if moneyFloat-money < 0.0 {
-		tx.Rollback()
-		code = e.Error
-		return serializer.Response{
-			Status: code,
-			Msg:    e.GetMsg(code),
-			Error:  err.Error(),
-		}
-	}
-
-	finMoney := fmt.Sprintf("%f", moneyFloat-money)
-	user.Money = utils.Encrypt.AesEncoding(finMoney)
-
-	userDao = dao.NewUserDaoByDB(userDao.DB)
-	err = userDao.UpdateUserById(uId, user) // 更新用户
-
-	if err != nil {
-		tx.Rollback()
-		code = e.Error
-		return serializer.Response{
-			Status: code,
-			Msg:    e.GetMsg(code),
-			Error:  err.Error(),
-		}
-	}
-
-	var boss *model.User
-	boss, err = userDao.GetUserById(service.BossId)
-	if err != nil {
-		tx.Rollback()
-		code = e.Error
-		return serializer.Response{
-			Status: code,
-			Msg:    e.GetMsg(code),
-			Error:  err.Error(),
-		}
-	}
-
-	// 对钱进行解密，加去订单，再加密保存
-	moneyStr = utils.Encrypt.AesDecoding(boss.Money)
-	moneyFloat, _ = strconv.ParseFloat(moneyStr, 64)
-	finMoney = fmt.Sprintf("%f", moneyFloat+money)
-	boss.Money = utils.Encrypt.AesEncoding(finMoney)
-
-	// userDao = dao.NewUserDaoByDB(userDao.DB)
-	err = userDao.UpdateUserById(boss.ID, boss) // 更新老板
-	if err != nil {
-		tx.Rollback()
-		code = e.Error
-		return serializer.Response{
-			Status: code,
-			Msg:    e.GetMsg(code),
-			Error:  err.Error(),
-		}
-	}
-
-	// 对应的商品数量 -1
-	var product *model.Product
-	productDao := dao.NewProductDao(ctx)
-	product, err = productDao.GetProductById(service.ProductId)
-	if err != nil {
-		tx.Rollback()
-		code = e.Error
-		return serializer.Response{
-			Status: code,
-			Msg:    e.GetMsg(code),
-			Error:  err.Error(),
-		}
-	}
-	product.Num -= num
-	err = productDao.UpdateProduct(service.ProductId, product)
-	if err != nil {
-		tx.Rollback()
-		code = e.Error
-		return serializer.Response{
-			Status: code,
-			Msg:    e.GetMsg(code),
-			Error:  err.Error(),
-		}
-	}
-
-	// 更新 订单type设置为2
-	upOrder := &model.Order{
-		Type: 2,
-	}
-	err = orderDao.UpdateOrderById(service.OrderId, upOrder)
-	if err != nil {
-		tx.Rollback()
-		code = e.Error
-		return serializer.Response{
-			Status: code,
-			Msg:    e.GetMsg(code),
-			Error:  err.Error(),
-		}
-	}
-
-	productUser := &model.Product{
-		Name:          product.Name,
-		CategoryId:    product.CategoryId,
-		Title:         product.Title,
-		Info:          product.Info,
-		ImgPath:       product.ImgPath,
-		Price:         product.Price,
-		DiscountPrice: product.DiscountPrice,
-		OnSale:        false,
-		Num:           order.Num,
-		BossId:        uId,
-		BossName:      user.UserName,
-		BossAvatar:    user.Avatar,
-	}
-	err = productDao.CreateProduct(productUser)
-	if err != nil {
-		tx.Rollback()
-		code = e.Error
-		return serializer.Response{
-			Status: code,
-			Msg:    e.GetMsg(code),
-			Error:  err.Error(),
-		}
-	}
-	tx.Commit() // 提交事务
+	// orderDao := dao.NewOrderDao(ctx)
+	// tx := orderDao.Begin()
+	// order, err := orderDao.GetOrderByIdAnduId(service.OrderId, uId)
+	// tx.Commit() // 提交事务
 	return serializer.Response{
 		Status: code,
 		Msg:    e.GetMsg(code),
