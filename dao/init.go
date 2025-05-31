@@ -26,6 +26,7 @@ func Database(connRead, connWrite string) {
 	ormLogger = logger.Default.LogMode(logger.Info)
 
 	// 开启数据库
+	// 只需要用这一行代码创建一个 gorm.DB 实例（db），然后通过 dbresolver 插件配置主库和从库的连接即可。
 	db, err := gorm.Open(mysql.New(mysql.Config{
 		DSN:                      connRead,
 		DefaultStringSize:        256,  // string类型字段默认长度
@@ -45,21 +46,26 @@ func Database(connRead, connWrite string) {
 	}
 
 	sqlDB, _ := db.DB()
-	sqlDB.SetMaxIdleConns(20)  // 设置连接池数
-	sqlDB.SetMaxOpenConns(100) // 打开连接数
+	sqlDB.SetMaxIdleConns(20)  // 设置连接池数 设置为20，意味着即使没有请求，最多保留20个连接在池子里，方便下次请求时能快速复用，减少频繁创建和销毁连接的开销。
+	sqlDB.SetMaxOpenConns(100) // 打开连接数 设置为100，能保证高并发时最多只有100个连接，不会因为连接数太多把数据库“撑爆”。
 	sqlDB.SetConnMaxLifetime(time.Second * 30)
 	_db = db
 
 	// 主从配置
+	// dbresolver 插件会自动帮你分配主库或从库
 	_ = _db.Use(dbresolver.
 		Register(dbresolver.Config{
-			Sources:  []gorm.Dialector{mysql.Open(connRead)},                       // 写操作
+			Sources:  []gorm.Dialector{mysql.Open(connRead)},                       // 写操作 应该使用connWrite，但因为实际没做主从分离，所以这里用connRead
 			Replicas: []gorm.Dialector{mysql.Open(connRead), mysql.Open(connRead)}, // 读操作
 			Policy:   dbresolver.RandomPolicy{},
 		}))
 
+	// db := dao.NewDBClient(ctx)
+	// db.Find(&users)      // 自动走从库
+	// db.Create(&user)     // 自动走主库
+
 	// 开始构造表 首次启动需要
-	Migration()
+	// Migration()
 }
 
 func NewDBClient(ctx context.Context) *gorm.DB {

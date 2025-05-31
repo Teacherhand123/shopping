@@ -3,9 +3,12 @@ package utils
 import (
 	"bytes"
 	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 )
 
 var Encrypt *Encryption
@@ -93,6 +96,62 @@ func (k *Encryption) AesDecoding(pwd string) string {
 	return string(dst)
 }
 
+// AES 只支持16、24或32字节的密钥
 func (k *Encryption) SetKey(key string) {
 	k.key = key
+}
+
+// CBC加密
+func (k *Encryption) AesEncodingCBC(src string) string {
+	srcByte := []byte(src)
+	block, err := aes.NewCipher([]byte(k.key))
+	if err != nil {
+		fmt.Println("获取AES块数失败: ", err.Error())
+		return src
+	}
+	blockSize := block.BlockSize()
+	srcByte = PadPwd(srcByte, blockSize)
+
+	// 生成随机IV
+	iv := make([]byte, blockSize)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		fmt.Println("生成IV失败: ", err.Error())
+		return src
+	}
+
+	blockMode := cipher.NewCBCEncrypter(block, iv)
+	dst := make([]byte, len(srcByte))
+	blockMode.CryptBlocks(dst, srcByte)
+
+	// 把IV和密文拼接后一起base64编码
+	final := append(iv, dst...)
+	return base64.StdEncoding.EncodeToString(final)
+}
+
+// CBC解密
+func (k *Encryption) AesDecodingCBC(pwd string) string {
+	pwdByte, err := base64.StdEncoding.DecodeString(pwd)
+	if err != nil {
+		return pwd
+	}
+	block, err := aes.NewCipher([]byte(k.key))
+	if err != nil {
+		return pwd
+	}
+	blockSize := block.BlockSize()
+	if len(pwdByte) < blockSize {
+		return ""
+	}
+	iv := pwdByte[:blockSize]
+	cipherText := pwdByte[blockSize:]
+
+	blockMode := cipher.NewCBCDecrypter(block, iv)
+	dst := make([]byte, len(cipherText))
+	blockMode.CryptBlocks(dst, cipherText)
+
+	dst, err = UnPadPwd(dst)
+	if err != nil {
+		return ""
+	}
+	return string(dst)
 }
